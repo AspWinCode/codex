@@ -1,5 +1,110 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import './CaseIntro.css';
+
+// ── Audio helpers (Web Audio API, no files needed) ────────────────────────────
+function getAudioCtx(): AudioContext | null {
+  try { return new (window.AudioContext || (window as any).webkitAudioContext)(); }
+  catch { return null; }
+}
+
+function playNoiseBurst(ctx: AudioContext, duration = 0.08, freq = 800, gain = 0.18) {
+  const buf = ctx.createBuffer(1, ctx.sampleRate * duration, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = freq;
+  filter.Q.value = 0.8;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(gain, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  src.connect(filter); filter.connect(g); g.connect(ctx.destination);
+  src.start(); src.stop(ctx.currentTime + duration);
+}
+
+function playTone(ctx: AudioContext, freq: number, duration = 0.06, gain = 0.12, type: OscillatorType = 'sine') {
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(gain, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(); osc.stop(ctx.currentTime + duration);
+}
+
+function useSounds() {
+  const ctxRef = useRef<AudioContext | null>(null);
+  const staticSrcRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const init = useCallback(() => {
+    if (!ctxRef.current) ctxRef.current = getAudioCtx();
+    return ctxRef.current;
+  }, []);
+
+  const folderOpen = useCallback(() => {
+    const ctx = init(); if (!ctx) return;
+    // глухой удар
+    playTone(ctx, 80, 0.15, 0.3, 'sine');
+    // шелест — несколько быстрых noise burst'ов
+    for (let i = 0; i < 5; i++)
+      setTimeout(() => playNoiseBurst(ctx, 0.05, 1200 + i * 200, 0.1), i * 30);
+  }, [init]);
+
+  const docsSpread = useCallback(() => {
+    const ctx = init(); if (!ctx) return;
+    // плавный нисходящий свист
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + 0.4);
+    g.gain.setValueAtTime(0.08, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.connect(g); g.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.4);
+    // бумажный шорох
+    setTimeout(() => playNoiseBurst(ctx, 0.2, 900, 0.07), 100);
+  }, [init]);
+
+  const typewriterTick = useCallback(() => {
+    const ctx = init(); if (!ctx) return;
+    playNoiseBurst(ctx, 0.022, 1800, 0.055);
+  }, [init]);
+
+  const startCctvStatic = useCallback(() => {
+    const ctx = init(); if (!ctx) return;
+    if (staticSrcRef.current) { try { staticSrcRef.current.stop(); } catch {} }
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1);
+    const src = ctx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 2000;
+    const g = ctx.createGain(); g.gain.value = 0.04;
+    src.connect(filter); filter.connect(g); g.connect(ctx.destination);
+    src.start();
+    staticSrcRef.current = src;
+  }, [init]);
+
+  const stopCctvStatic = useCallback(() => {
+    if (staticSrcRef.current) { try { staticSrcRef.current.stop(); } catch {} staticSrcRef.current = null; }
+  }, []);
+
+  const caseAccepted = useCallback(() => {
+    const ctx = init(); if (!ctx) return;
+    stopCctvStatic();
+    // восходящий аккорд
+    [440, 554, 659].forEach((f, i) =>
+      setTimeout(() => playTone(ctx, f, 0.3, 0.08, 'sine'), i * 60)
+    );
+  }, [init, stopCctvStatic]);
+
+  return { folderOpen, docsSpread, typewriterTick, startCctvStatic, stopCctvStatic, caseAccepted };
+}
 
 type Stage = 'access' | 'folder' | 'spread' | 'rita' | 'cctv' | 'anna' | 'cta';
 
@@ -31,7 +136,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-function useTypewriter(lines: string[], active: boolean) {
+function useTypewriter(lines: string[], active: boolean, onTick?: () => void) {
   const [idx, setIdx] = useState(0);
   const [chars, setChars] = useState(0);
   const [displayed, setDisplayed] = useState<string[]>([]);
@@ -54,6 +159,7 @@ function useTypewriter(lines: string[], active: boolean) {
           next[idx] = line.slice(0, chars);
           return next;
         });
+        if (chars > 0 && chars <= line.length) onTick?.();
         setChars((c) => c + 1);
       }, 26 + Math.random() * 12);
       return () => clearTimeout(t);
@@ -76,6 +182,7 @@ export default function CaseIntro({
   agentName: string;
   onComplete: () => void;
 }) {
+  const sounds = useSounds();
   const [stage, setStage] = useState<Stage>('access');
 
   // ACCESS state
@@ -92,8 +199,8 @@ export default function CaseIntro({
   const cctvRafRef = useRef<number | null>(null);
 
   // Character typewriters
-  const { displayed: ritaText, done: ritaDone } = useTypewriter(RITA_LINES, stage === 'rita');
-  const { displayed: annaText, done: annaDone } = useTypewriter(ANNA_LINES, stage === 'anna');
+  const { displayed: ritaText, done: ritaDone } = useTypewriter(RITA_LINES, stage === 'rita', sounds.typewriterTick);
+  const { displayed: annaText, done: annaDone } = useTypewriter(ANNA_LINES, stage === 'anna', sounds.typewriterTick);
 
   const [fading, setFading] = useState(false);
 
@@ -129,9 +236,16 @@ export default function CaseIntro({
   // ── SPREAD → RITA auto-advance ─────────────────────────────────────────────
   useEffect(() => {
     if (stage !== 'spread') return;
-    const t1 = setTimeout(() => setDocsVisible(true), 80);
+    const t1 = setTimeout(() => { setDocsVisible(true); sounds.docsSpread(); }, 80);
     const t2 = setTimeout(() => setStage('rita'), 2800);
     return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [stage]);
+
+  // ── CCTV static sound ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (stage !== 'cctv') return;
+    sounds.startCctvStatic();
+    return () => sounds.stopCctvStatic();
   }, [stage]);
 
   // ── CCTV canvas ───────────────────────────────────────────────────────────
@@ -212,10 +326,11 @@ export default function CaseIntro({
 
   const name = (agentName || 'НЕИЗВЕСТЕН').toUpperCase();
 
-  const handleOpenFolder = () => setStage('spread');
+  const handleOpenFolder = () => { sounds.folderOpen(); setStage('spread'); };
   const handleRitaContinue = () => { setCctvLines([]); setStage('cctv'); };
   const handleAnnaNext = () => setStage('cta');
   const handleComplete = () => {
+    sounds.caseAccepted();
     setFading(true);
     setTimeout(() => onComplete(), 1300);
   };
