@@ -45,7 +45,6 @@ services:
       SECRET_KEY: ${SECRET_KEY}
       ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      JUDGER_INTERNAL_TOKEN: ${JUDGER_INTERNAL_TOKEN}
       CORS_ORIGINS: ${CORS_ORIGINS}
       FRONTEND_URL: ${FRONTEND_URL}
       SSO_SHARED_SECRET: ${SSO_SHARED_SECRET}
@@ -54,33 +53,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-
-  judger:
-    build:
-      context: ./judger
-      dockerfile: Dockerfile
-    environment:
-      REDIS_URL: redis://redis:6379/0
-      BACKEND_INTERNAL_URL: http://backend:8000/api/submissions/internal
-      JUDGER_INTERNAL_TOKEN: ${JUDGER_INTERNAL_TOKEN}
-      SANDBOX_IMAGE_PYTHON: platform-sandbox-python:latest
-      SANDBOX_IMAGE_SQL: platform-sandbox-sql:latest
-      SANDBOX_IMAGE_CPP: platform-sandbox-cpp:latest
-      SANDBOX_IMAGE_JS: platform-sandbox-js:latest
-      SANDBOX_TIMEOUT: "15"
-      SANDBOX_MEMORY_LIMIT: "128m"
-      SANDBOX_MAX_CONCURRENT: "2"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - /tmp:/tmp
-    depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
@@ -102,23 +74,6 @@ services:
       resources:
         limits:
           memory: 32M
-
-  e2e-check:
-    build:
-      context: ./infrastructure/e2e
-      dockerfile: Dockerfile
-    profiles: ["e2e"]
-    environment:
-      BASE_URL: http://backend:8000
-      ADMIN_LOGIN: ${ADMIN_LOGIN:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      E2E_TIMEOUT: "120"
-      E2E_HEALTH_TIMEOUT: "120"
-    depends_on:
-      backend:
-        condition: service_started
-      judger:
-        condition: service_started
 
 volumes:
   pgdata:
