@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     ADMIN_LOGIN: str = "admin"
     ADMIN_PASSWORD: str
-    JUDGER_INTERNAL_TOKEN: str
     CORS_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000"
     AUTO_CREATE_TABLES: bool = False
     # Email / SMTP settings (optional — leave blank to disable email)
@@ -26,8 +25,6 @@ class Settings(BaseSettings):
     SMTP_FROM: str = ""
     SMTP_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
-    # GetCourse webhook secret (оставь пустым чтобы отключить проверку)
-    GETCOURSE_WEBHOOK_SECRET: str = ""
     # Общий секрет для SSO-перехода ученика из tirskix.space (learning-portal) — НЕ SECRET_KEY.
     SSO_SHARED_SECRET: str = ""
     SSO_AUDIENCE: str = "kodex"
