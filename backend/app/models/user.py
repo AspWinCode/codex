@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, Enum, String, func
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
@@ -31,17 +31,3 @@ class User(Base):
     full_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    submissions = relationship("Submission", back_populates="user", passive_deletes=True)
-    progress = relationship("StudentProgress", back_populates="user", passive_deletes=True)
-    course_progress = relationship(
-        "UserCourseProgress",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    node_task_progress = relationship(
-        "UserCourseNodeTaskProgress",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-    personal_links = relationship("PersonalLink", back_populates="user", passive_deletes=True)
